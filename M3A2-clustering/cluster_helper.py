@@ -1,8 +1,8 @@
 import pandas as pd
+import numpy as np
 
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.cluster import KMeans
-from sklearn.manifold import TSNE
 
 import plotly.graph_objects as go
 import plotly.express as px
@@ -10,11 +10,14 @@ from plotly.subplots import make_subplots
 
 import matplotlib.pyplot as plt
 
+from google.colab import widgets
+
 import warnings
 warnings.filterwarnings('ignore')
 
 # Creating required Python functions for this session
 # Press Shift + Enter
+
 
 def standardize_numeric_data(df, numeric_columns):
     df_original = df.copy()
@@ -37,6 +40,7 @@ def standardize_numeric_data(df, numeric_columns):
 
     return df, df_original
 
+
 def run_kmeans_model(cluster_count, df, df_original, numeric_columns):
     km_estimator = KMeans(n_clusters=cluster_count, random_state=42)
     df_labels = km_estimator.fit_predict(df[numeric_columns])
@@ -44,6 +48,7 @@ def run_kmeans_model(cluster_count, df, df_original, numeric_columns):
     df_pred = df_original.copy()
     df_pred['kmeans_label'] = df_labels
     return df_pred
+
 
 def create_segment_profiling_chart(df, cluster):
     df = df[df['kmeans_label'] == cluster]
@@ -82,6 +87,7 @@ def create_segment_profiling_chart(df, cluster):
     fig.update_layout(title='Customer Profile for Customer Segment Number {}. Segment Size: {}'.format(cluster, len(df)))
     fig.show()
 
+
 def plot_elbow_chart(df, numeric_columns):
     sse = []
     for k in range(1, 10):
@@ -95,29 +101,48 @@ def plot_elbow_chart(df, numeric_columns):
     plt.title('Elbow chart')
     plt.show()
 
-def create_cluster_visualisation(df_pred, numeric_columns):
-    tsne = TSNE(n_components=3, random_state=42)
-    X_tsne = pd.DataFrame(tsne.fit_transform(df_pred[numeric_columns]), columns=['X', 'Y', 'Z'])
-    X_tsne['cluster'] = df_pred['kmeans_label']
+
+def create_cluster_visualisation(df_pred):
+    x_range = np.percentile(df_pred['most_recent_purchase_days'], [2.5, 97.5])
+    y_range = np.percentile(df_pred['total_net_sales'], [2.5, 97.5])
+    z_range = np.percentile(df_pred['total_no_transactions'], [2.5, 97.5])
 
     fig = go.Figure(data=go.Scatter3d(
-        x=X_tsne['X'],
-        y=X_tsne['Y'],
-        z=X_tsne['Z'],
+        x=df_pred['most_recent_purchase_days'],
+        y=df_pred['total_net_sales'],
+        z=df_pred['total_no_transactions'],
         mode='markers',
         marker=dict(
-            color=X_tsne['cluster'],
+            color=df_pred['kmeans_label'],
             colorscale='Viridis',
             opacity=0.8,
             size=5
         ),
         showlegend=False
     ))
+
+    fig.update_layout(scene=dict(
+        xaxis=dict(range=x_range),
+        yaxis=dict(range=y_range),
+        zaxis=dict(range=z_range),
+        xaxis_title='Recency',
+        yaxis_title='Monetary',
+        zaxis_title='Frequency'
+    ))
     fig.show()
+
 
 def experiment_different_cluster(df, df_original, cluster_columns, number_of_clusters):
     df_pred = run_kmeans_model(number_of_clusters, df, df_original, cluster_columns)
-    create_cluster_visualisation(df_pred, cluster_columns)
+
+    tab_cols = ['Cluster Visualisation']
+    for i in range(number_of_clusters):
+        tab_cols.append("Cluster {}".format(i))
+
+    t = widgets.TabBar(tab_cols)
+    with t.output_to(0):
+        create_cluster_visualisation(df_pred)
 
     for i in range(number_of_clusters):
-        create_segment_profiling_chart(df_pred, i)
+        with t.output_to(i + 1):
+            create_segment_profiling_chart(df_pred, i)
